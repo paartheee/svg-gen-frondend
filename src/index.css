@@ -12,6 +12,26 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
+@keyframes landing-float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes landing-glow {
+  0% { opacity: 0.55; }
+  50% { opacity: 0.9; }
+  100% { opacity: 0.55; }
+}
+
+.landing-float {
+  animation: landing-float 6s ease-in-out infinite;
+}
+
+.landing-glow {
+  animation: landing-glow 8s ease-in-out infinite;
+}
+
 .svg-preview-container {
   background-image:
     linear-gradient(45deg, #f0f0f0 25%, transparent 25%),

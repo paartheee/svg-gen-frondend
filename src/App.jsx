@@ -19,6 +19,9 @@ function App() {
   const [keepBackground, setKeepBackground] = useState(true);
   const [lockedIds, setLockedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds] = useState(new Set());
+  const [view, setView] = useState('landing');
+  const [loadingFact, setLoadingFact] = useState('');
+  const [loadingPercent, setLoadingPercent] = useState(0);
 
   const primarySelectedId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
 
@@ -37,6 +40,8 @@ function App() {
       setModelUsed(result.model_used);
       setLockedIds(new Set());
       setHiddenIds(new Set());
+      setShowCode(false);
+      setView('editor');
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to generate SVG");
     } finally {
@@ -103,7 +108,7 @@ function App() {
   const handleExport = (format) => {
     if (!svgCode) return;
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `semantic-svg-${timestamp}.${format}`;
+    const filename = `svgmint-${timestamp}.${format}`;
 
     if (format === 'svg') {
       downloadSVG(svgCode, filename);
@@ -243,6 +248,174 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (!isLoading) return;
+    const geminiFacts = [
+    ];
+    const randomFact = geminiFacts[Math.floor(Math.random() * geminiFacts.length)];
+    setLoadingFact(randomFact);
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingPercent(0);
+      return;
+    }
+    setLoadingPercent(8);
+    const interval = setInterval(() => {
+      setLoadingPercent((prev) => {
+        if (prev >= 92) return prev;
+        const bump = Math.floor(Math.random() * 6) + 2;
+        return Math.min(92, prev + bump);
+      });
+    }, 450);
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  const LoadingOverlay = () => (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gradient-to-br from-emerald-50/60 via-white/30 to-green-50/60 backdrop-blur-[2px]">
+      <div className="flex flex-col items-center gap-3 bg-white/85 border border-white/60 shadow-xl rounded-2xl px-6 py-5 max-w-xs text-center">
+        <div className="relative">
+          <div className="absolute -inset-3 rounded-full bg-green-200/70 blur-xl animate-pulse" />
+          <div className="relative w-12 h-12 rounded-full border-4 border-green-200 border-t-green-600 animate-spin" />
+        </div>
+        <div className="text-sm font-semibold text-slate-700">Generating SVG… {loadingPercent}%</div>
+        <div className="text-xs text-slate-400">Please wait a moment</div>
+        {loadingFact && (
+          <div className="text-[11px] text-slate-500 bg-slate-100/70 rounded-lg px-3 py-2">
+            {loadingFact}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  if (view === 'landing') {
+    const conversationStarters = [
+      {
+        emoji: '🚀',
+        text: 'A minimalist rocket icon with flames',
+        gradient: 'from-red-500 to-orange-500',
+        bg: 'bg-red-50',
+        border: 'border-red-200',
+        hover: 'hover:bg-red-100'
+      },
+      {
+        emoji: '🌊',
+        text: 'Ocean waves with a sunset gradient',
+        gradient: 'from-blue-500 to-purple-500',
+        bg: 'bg-blue-50',
+        border: 'border-blue-200',
+        hover: 'hover:bg-blue-100'
+      },
+      {
+        emoji: '🦁',
+        text: 'Geometric lion head in gold tones',
+        gradient: 'from-yellow-500 to-amber-600',
+        bg: 'bg-yellow-50',
+        border: 'border-yellow-200',
+        hover: 'hover:bg-yellow-100'
+      },
+      {
+        emoji: '🌿',
+        text: 'Abstract leaf pattern with organic curves',
+        gradient: 'from-green-500 to-emerald-600',
+        bg: 'bg-green-50',
+        border: 'border-green-200',
+        hover: 'hover:bg-green-100'
+      },
+      {
+        emoji: '⚡',
+        text: 'Lightning bolt with electric glow effect',
+        gradient: 'from-cyan-500 to-blue-600',
+        bg: 'bg-cyan-50',
+        border: 'border-cyan-200',
+        hover: 'hover:bg-cyan-100'
+      },
+      {
+        emoji: '🎨',
+        text: 'Modern abstract logo with vibrant colors',
+        gradient: 'from-pink-500 to-rose-600',
+        bg: 'bg-pink-50',
+        border: 'border-pink-200',
+        hover: 'hover:bg-pink-100'
+      }
+    ];
+
+    return (
+      <div className="min-h-screen w-full relative overflow-hidden bg-slate-50 text-slate-900">
+        <div className="absolute inset-0 z-0 opacity-60 pointer-events-none">
+          <div className="absolute -top-24 -right-24 w-[420px] h-[420px] bg-green-200 rounded-full mix-blend-multiply filter blur-3xl landing-glow" />
+          <div className="absolute -bottom-32 -left-20 w-[460px] h-[460px] bg-emerald-200 rounded-full mix-blend-multiply filter blur-3xl landing-glow" />
+          <div className="absolute top-24 left-1/2 w-[300px] h-[300px] bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl landing-glow" />
+        </div>
+
+        <div className="relative z-10 min-h-screen flex items-center justify-center px-6 py-12">
+          <div className="w-full max-w-4xl">
+            <div className="flex flex-col items-center text-center mb-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
+              <div className="relative mb-6">
+                <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-green-200 to-emerald-200 blur-2xl opacity-60 landing-glow" />
+                <div className="relative w-20 h-20 rounded-2xl overflow-hidden shadow-2xl landing-float bg-white flex items-center justify-center">
+                  <img src="/logo.png" alt="SVG Surgeon logo" className="w-12 h-12 object-contain" />
+                </div>
+              </div>
+              <h1 className="text-5xl sm:text-6xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Mint</h1>
+              <p className="mt-3 text-base sm:text-lg text-slate-500 font-medium">Intent-Preserving Vector Editing with Gemini 3</p>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-md border border-white/40 rounded-3xl shadow-2xl p-6 sm:p-8 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-150">
+              <PromptInput
+                onSubmit={handleGenerate}
+                isLoading={isLoading}
+                placeholder="Describe the SVG you want to generate..."
+                allowImage
+              />
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={keepBackground}
+                    onChange={(e) => setKeepBackground(e.target.checked)}
+                    className="h-4 w-4 accent-green-600"
+                  />
+                  Keep background
+                </label>
+                <span>Press Enter to generate</span>
+              </div>
+              {error && (
+                <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            {/* Conversation Starters */}
+            <div className="mt-8 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
+              <h2 className="text-center text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Try these prompts</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {conversationStarters.map((starter, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleGenerate(starter.text)}
+                    disabled={isLoading}
+                    className={`group relative overflow-hidden ${starter.bg} ${starter.border} border ${starter.hover} rounded-2xl p-4 text-left transition-all duration-300 hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
+                  >
+                    <div className={`absolute inset-0 bg-gradient-to-br ${starter.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
+                    <div className="relative flex items-start gap-3">
+                      <span className="text-2xl flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300">{starter.emoji}</span>
+                      <p className="text-sm font-medium text-slate-700 leading-snug">{starter.text}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        {isLoading && <LoadingOverlay />}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-hidden font-sans text-slate-900">
 
@@ -250,12 +423,12 @@ function App() {
       <aside className="w-full md:w-[400px] flex-shrink-0 bg-white border-r border-slate-200 flex flex-col h-[100vh] z-20 shadow-2xl">
         <div className="p-6 border-b border-slate-100 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-green-600 to-emerald-600 rounded-xl shadow-lg shadow-green-500/30">
-              <Code2 className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
+              <img src="/logo.png" alt="SVG Mint Logo" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Surgeon</h1>
-              <p className="text-xs text-slate-400 font-medium">Intent-Preserving Vector Editing with Gemini 3</p>
+              <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Mint</h1>
+              <p className="text-xs text-slate-400 font-medium">AI-Powered Semantic Vector Editor Powered by Gemini 3</p>
             </div>
           </div>
         </div>
@@ -314,7 +487,7 @@ function App() {
                 >
                   <Undo className="w-3.5 h-3.5" /> Undo
                 </button>
-                <button onClick={() => { setSvgCode(null); setSelectedIds([]); setHistory([]); setLockedIds(new Set()); setHiddenIds(new Set()); }} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors whitespace-nowrap">
+                <button onClick={() => { setSvgCode(null); setSelectedIds([]); setHistory([]); setLockedIds(new Set()); setHiddenIds(new Set()); setShowCode(false); setError(null); setView('landing'); }} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors whitespace-nowrap">
                   <X className="w-3.5 h-3.5" /> Start Over
                 </button>
               </div>
@@ -505,6 +678,7 @@ function App() {
           </div>
         )}
       </main>
+      {isLoading && <LoadingOverlay />}
     </div>
   );
 }
