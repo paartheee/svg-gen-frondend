@@ -273,19 +273,28 @@ function App() {
   }, [isLoading]);
 
   const LoadingOverlay = () => (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gradient-to-br from-emerald-50/60 via-white/30 to-green-50/60 backdrop-blur-[2px]">
-      <div className="flex flex-col items-center gap-3 bg-white/85 border border-white/60 shadow-xl rounded-2xl px-6 py-5 max-w-xs text-center">
-        <div className="relative">
-          <div className="absolute -inset-3 rounded-full bg-green-200/70 blur-xl animate-pulse" />
-          <div className="relative w-12 h-12 rounded-full border-4 border-green-200 border-t-green-600 animate-spin" />
-        </div>
-        <div className="text-sm font-semibold text-slate-700">Generating SVG… {loadingPercent}%</div>
-        <div className="text-xs text-slate-400">Please wait a moment</div>
-        {loadingFact && (
-          <div className="text-[11px] text-slate-500 bg-slate-100/70 rounded-lg px-3 py-2">
-            {loadingFact}
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gradient-to-br from-emerald-50/60 via-white/30 to-pink-50/60 backdrop-blur-[2px]">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-24 -left-10 w-72 h-72 bg-green-200/70 rounded-full blur-3xl animate-blob" />
+        <div className="absolute top-10 right-0 w-64 h-64 bg-pink-200/70 rounded-full blur-3xl animate-blob animation-delay-2000" />
+        <div className="absolute bottom-0 left-1/3 w-72 h-72 bg-amber-200/70 rounded-full blur-3xl animate-blob animation-delay-4000" />
+      </div>
+      <div className="relative z-10 p-[1px] rounded-2xl bg-gradient-to-r from-green-400 via-yellow-300 to-pink-400 shadow-2xl">
+        <div className="flex flex-col items-center gap-3 bg-white/90 rounded-2xl px-6 py-5 max-w-xs text-center">
+          <div className="relative">
+            <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-green-300 via-yellow-200 to-pink-300 blur-2xl animate-pulse" />
+            <div className="relative w-12 h-12 rounded-full border-4 border-transparent bg-gradient-to-r from-green-400 via-yellow-300 to-pink-400 p-[2px] animate-spin">
+              <div className="w-full h-full rounded-full bg-white" />
+            </div>
           </div>
-        )}
+          <div className="text-sm font-semibold text-slate-700">Generating SVG… {loadingPercent}%</div>
+          <div className="text-xs text-slate-400">Please wait a moment</div>
+          {loadingFact && (
+            <div className="text-[11px] text-slate-600 bg-gradient-to-r from-green-50 via-yellow-50 to-pink-50 rounded-lg px-3 py-2">
+              {loadingFact}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
