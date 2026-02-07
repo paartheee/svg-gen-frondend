@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { generateSvg, editSvg } from './api';
+import {
+  editSvg,
+  generateSvg,
+} from './api';
 import SvgPreview from './components/SvgPreview';
 import PromptInput from './components/PromptInput';
 import ManualControls from './components/ManualControls';
 import LayerTree from './components/LayerTree';
-import { updateElementColor, updateElementScale, removeElement, removeBackground, updateElementPosition, duplicateElement, moveLayerUp, moveLayerDown, moveLayerBefore, moveLayerAfter } from './utils/svgUtils';
+import { addBackground, removeBackground, updateElementColor, updateElementScale, removeElement, updateElementPosition, duplicateElement, moveLayerUp, moveLayerDown, moveLayerBefore, moveLayerAfter } from './utils/svgUtils';
 import { downloadSVG, downloadImage, downloadPDF } from './utils/exportUtils';
-import { Wand2, Code2, Layers, X, Sparkles, Eraser, Download, FileJson, FileImage, FileType, Undo } from 'lucide-react';
+import { Code2, Layers, X, Sparkles, FileJson, FileImage, FileType, Undo, Plus, Eraser } from 'lucide-react';
 
 function App() {
   const [svgCode, setSvgCode] = useState(null);
@@ -16,14 +19,24 @@ function App() {
   const [modelUsed, setModelUsed] = useState(null);
   const [showCode, setShowCode] = useState(false);
   const [history, setHistory] = useState([]);
-  const [keepBackground, setKeepBackground] = useState(true);
   const [lockedIds, setLockedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds] = useState(new Set());
   const [view, setView] = useState('landing');
   const [loadingFact, setLoadingFact] = useState('');
   const [loadingPercent, setLoadingPercent] = useState(0);
+  const [previewBaseSvg, setPreviewBaseSvg] = useState(null);
+  const [previewSvg, setPreviewSvg] = useState(null);
+  const [showPreviewBefore, setShowPreviewBefore] = useState(false);
 
   const primarySelectedId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
+  const isPreviewActive = Boolean(previewBaseSvg && previewSvg);
+  const displaySvg = isPreviewActive ? (showPreviewBefore ? previewBaseSvg : previewSvg) : svgCode;
+
+  const clearPreviewState = () => {
+    setPreviewBaseSvg(null);
+    setPreviewSvg(null);
+    setShowPreviewBefore(false);
+  };
 
   const handleGenerate = async (prompt, imageFile = null) => {
     setIsLoading(true);
@@ -35,12 +48,12 @@ function App() {
       if (svgCode) {
         setHistory(prev => [...prev, svgCode]);
       }
-      const generatedSvg = keepBackground ? result.svg_code : removeBackground(result.svg_code);
-      setSvgCode(generatedSvg);
+      setSvgCode(addBackground(result.svg_code));
       setModelUsed(result.model_used);
       setLockedIds(new Set());
       setHiddenIds(new Set());
       setShowCode(false);
+      clearPreviewState();
       setView('editor');
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to generate SVG");
@@ -49,15 +62,15 @@ function App() {
     }
   };
 
-  const handleEdit = async (instruction) => {
-    if (!svgCode) return;
+  const handleEdit = async (instruction, imageFile = null) => {
+    if (!svgCode || isPreviewActive) return;
     setIsLoading(true);
     setError(null);
     try {
-      // Save to history before editing
-      setHistory(prev => [...prev, svgCode]);
-      const result = await editSvg(svgCode, instruction, primarySelectedId);
-      setSvgCode(result.svg_code);
+      const result = await editSvg(svgCode, instruction, primarySelectedId, imageFile);
+      setPreviewBaseSvg(svgCode);
+      setPreviewSvg(result.svg_code);
+      setShowPreviewBefore(false);
       setModelUsed(result.model_used);
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to edit SVG");
@@ -66,23 +79,34 @@ function App() {
     }
   };
 
+  const handleApplyPreview = () => {
+    if (!isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    setSvgCode(previewSvg);
+    clearPreviewState();
+  };
+
+  const handleDiscardPreview = () => {
+    clearPreviewState();
+  };
+
   // Manual Edit Handlers
   const handleManualColor = (color) => {
-    if (!svgCode || !primarySelectedId) return;
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = updateElementColor(svgCode, primarySelectedId, color);
     setSvgCode(newSvg);
   };
 
   const handleManualScale = (factor) => {
-    if (!svgCode || !primarySelectedId) return;
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = updateElementScale(svgCode, primarySelectedId, factor);
     setSvgCode(newSvg);
   };
 
   const handleManualDelete = () => {
-    if (!svgCode || !primarySelectedId) return;
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = removeElement(svgCode, primarySelectedId);
     setSvgCode(newSvg);
@@ -90,7 +114,7 @@ function App() {
   };
 
   const handleManualDuplicate = () => {
-    if (!svgCode || !primarySelectedId) return;
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newId = `${primarySelectedId}_copy_${Date.now()}`;
     const newSvg = duplicateElement(svgCode, primarySelectedId, newId);
@@ -98,12 +122,17 @@ function App() {
     setSelectedIds([newId]);
   };
 
-  const handleRemoveBackground = () => {
-    if (!svgCode) return;
+  const handleAddBackground = () => {
+    if (!svgCode || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
-    const newSvg = removeBackground(svgCode);
-    setSvgCode(newSvg);
-  }
+    setSvgCode(addBackground(svgCode));
+  };
+
+  const handleRemoveBackground = () => {
+    if (!svgCode || isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    setSvgCode(removeBackground(svgCode));
+  };
 
   const handleExport = (format) => {
     if (!svgCode) return;
@@ -120,42 +149,42 @@ function App() {
   };
 
   const handleElementDrag = (elementId, deltaX, deltaY) => {
-    if (!svgCode) return;
+    if (!svgCode || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = updateElementPosition(svgCode, elementId, deltaX, deltaY);
     setSvgCode(newSvg);
   };
 
   const handleUndo = () => {
-    if (history.length === 0) return;
+    if (history.length === 0 || isPreviewActive) return;
     const previousState = history[history.length - 1];
     setHistory(prev => prev.slice(0, -1));
     setSvgCode(previousState);
   };
 
   const handleMoveLayerUp = (elementId) => {
-    if (!svgCode) return;
+    if (!svgCode || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = moveLayerUp(svgCode, elementId);
     setSvgCode(newSvg);
   };
 
   const handleMoveLayerDown = (elementId) => {
-    if (!svgCode) return;
+    if (!svgCode || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = moveLayerDown(svgCode, elementId);
     setSvgCode(newSvg);
   };
 
   const handleMoveLayerBefore = (elementId, targetId) => {
-    if (!svgCode) return;
+    if (!svgCode || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = moveLayerBefore(svgCode, elementId, targetId);
     setSvgCode(newSvg);
   };
 
   const handleMoveLayerAfter = (elementId, targetId) => {
-    if (!svgCode) return;
+    if (!svgCode || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = moveLayerAfter(svgCode, elementId, targetId);
     setSvgCode(newSvg);
@@ -194,7 +223,7 @@ function App() {
   };
 
   const handleGroupDelete = () => {
-    if (!svgCode || selectedIds.length === 0) return;
+    if (!svgCode || selectedIds.length === 0 || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     let newSvg = svgCode;
     selectedIds.forEach((id) => {
@@ -205,7 +234,7 @@ function App() {
   };
 
   const handleGroupDuplicate = () => {
-    if (!svgCode || selectedIds.length === 0) return;
+    if (!svgCode || selectedIds.length === 0 || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     let newSvg = svgCode;
     const newIds = [];
@@ -219,7 +248,7 @@ function App() {
   };
 
   const handleGroupMoveUp = () => {
-    if (!svgCode || selectedIds.length === 0) return;
+    if (!svgCode || selectedIds.length === 0 || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     let newSvg = svgCode;
     selectedIds.forEach((id) => {
@@ -229,7 +258,7 @@ function App() {
   };
 
   const handleGroupMoveDown = () => {
-    if (!svgCode || selectedIds.length === 0) return;
+    if (!svgCode || selectedIds.length === 0 || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     let newSvg = svgCode;
     [...selectedIds].reverse().forEach((id) => {
@@ -237,6 +266,7 @@ function App() {
     });
     setSvgCode(newSvg);
   };
+
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -301,67 +331,37 @@ function App() {
 
   if (view === 'landing') {
     const conversationStarters = [
-  {
-    emoji: '🍬',
-    label: 'Pop Art Candy',
-    // Fix: Explicitly asks for gradients and rounded rects to fix the "blocky" look
-    prompt: 'A modern, glossy gummy bear icon. 1) Shape: Use a rounded rectangle base with smaller rounded circles for ears and limbs to create a soft, gummy silhouette. 2) Color: Use a vertical linear gradient from deep magenta (#db2777) at the bottom to hot pink (#f472b6) at the top. 3) Detail: Add a semi-transparent white oval on the belly (opacity 0.3) and a sharp white curve on the head to simulate a plastic/jelly texture. No outlines, just vibrant color fields.',
-    gradient: 'from-pink-500 to-fuchsia-500',
-    bg: 'bg-pink-50',
-    border: 'border-pink-200',
-    hover: 'hover:bg-pink-100'
-  },
-  {
-    emoji: '🪐',
-    label: 'Retro Saturn',
-    // Fix: Solves the "rings cutting through planet" issue by ordering layers
-    prompt: 'A vibrant, flat-vector illustration of Saturn. 1) Layering Order: First draw the "Back Rings" (the part behind the planet), then draw the "Planet Sphere", then draw the "Front Rings". 2) Planet: A perfect circle with a subtle diagonal gradient (Cream to soft yellow). 3) Rings: Use thick bands of Teal, Tangerine, and Magenta. The rings should be elliptical and tilted 15 degrees. 4) Style: Clean vector lines, no blur, high contrast.',
-    gradient: 'from-amber-500 to-orange-500',
-    bg: 'bg-amber-50',
-    border: 'border-amber-200',
-    hover: 'hover:bg-amber-100'
-  },
-  {
-    emoji: '🍦',
-    label: 'Pastel Swirl',
-    // Fix: Forces the "stacked" look to avoid the messy single stroke
-    prompt: 'A soft-serve ice cream cone. 1) Ice Cream: Composed of three distinct, stacked "blob" shapes that get smaller towards the top. Use a different shade of purple for each stack (Dark Purple base -> Medium Lavender -> Light Lilac tip) to create depth without lines. 2) Cone: A sharp triangle in golden-brown with a cross-hatch pattern made of darker brown lines. 3) Lighting: Add a soft white highlight on the left side of each ice cream blob.',
-    gradient: 'from-purple-500 to-violet-500',
-    bg: 'bg-purple-50',
-    border: 'border-purple-200',
-    hover: 'hover:bg-purple-100'
-  },
-  {
-    emoji: '🎈',
-    label: 'Float Away',
-    // Fix: Adds specific instructions for the "3D" look using gradients
-    prompt: 'A high-fidelity red balloon. 1) Body: A perfect egg-shape (ellipse) tilted slightly. Fill with a radial gradient (Center: Bright Red #ef4444, Edge: Dark Cherry #991b1b) to give it a spherical 3D look. 2) Reflection: A hard-edged white oval in the top-right corner (opacity 0.8) to show surface gloss. 3) String: A thin, dark grey bezier curve hanging loosely from the bottom knot.',
-    gradient: 'from-red-500 to-rose-500',
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-    hover: 'hover:bg-red-100'
-  },
-  {
-    emoji: '💎',
-    label: 'Prism Shard',
-    // Fix: Reinforces the "Faceted" look which works well with flat colors
-    prompt: 'A crystal diamond icon. 1) Geometry: A polygon with sharp, angular edges. 2) Facets: Divide the shape into 6-8 triangular facets. Fill each facet with a distinct color from a cool-spectrum palette (Cyan, Electric Blue, Violet, Indigo) to simulate light refraction. Do not use gradients here—use solid blocks of varying lightness to show the angles. 3) Sparkle: Add two small white "star" shapes at the corners.',
-    gradient: 'from-indigo-500 to-fuchsia-500',
-    bg: 'bg-indigo-50',
-    border: 'border-indigo-200',
-    hover: 'hover:bg-indigo-100'
-  },
-  {
-    emoji: '🧬',
-    label: 'Glass Helix',
-    // Fix: Simplifies the complex "blur" request into something SVGs handle well (opacity)
-    prompt: 'A stylized DNA helix. 1) Structure: Two thick, sinusoidal wave paths that intertwine. 2) Color: One path is Cyan, the other is Teal. 3) Transparency: Where the paths overlap, use `fill-opacity="0.5"` or a blend mode color to simulate glass transparency. 4) Rungs: Connect the waves with simple horizontal lines with rounded caps. Keep the design minimal and abstract.',
-    gradient: 'from-teal-500 to-cyan-500',
-    bg: 'bg-teal-50',
-    border: 'border-teal-200',
-    hover: 'hover:bg-teal-100'
-  }
-];
+      {
+        "emoji": '🍬',
+        "label": 'Pop Art Candy',
+        "prompt": 'Construct a gummy bear using geometric primitives. 1) Define a <linearGradient> from hot pink (#ff0080) to purple (#8000ff). 2) Head: A large rounded rectangle (rx=40). 3) Ears: Two perfect circles behind the head. 4) Body: A larger rounded rectangle below the head. 5) Arms/Legs: Four smaller rounded rectangles attached to the body. 6) Material: Apply the gradient to all shapes. Overlay a semi-transparent white ellipse on the belly and forehead to create a "gummy" gloss effect.'
+      },
+      {
+        "emoji": '🪐',
+        "label": 'Retro Saturn',
+        "prompt": 'Construct a flat Saturn icon with high contrast. 1) Define <defs>: Create three solid colors: Deep Cream, Teal, and Magenta. 2) Layer 1 (Back): Draw the top half of three concentric ellipses (the rings) appearing *behind* the planet. 3) Layer 2 (Planet): Draw a perfect circle in the center (Deep Cream color). 4) Layer 3 (Front): Draw the bottom half of the three concentric ellipses (the rings) appearing *in front* of the planet. 5) Detail: The rings must have a 20-degree rotation. No gradients, just clean solid shapes.'
+      },
+      {
+        "emoji": '🍦',
+        "label": 'Pastel Swirl',
+        "prompt": 'Construct a soft-serve ice cream. 1) Cone: A strictly triangular path pointing down, filled with a sandy beige color. Overlay a pattern of thin diagonal lines (stroke-width="2") in darker brown. 2) Cream: Create three stacked shapes. The bottom is wide and bulbous, the middle is smaller, and the top is a teardrop point. 3) Color: Use a stepped gradient strategy—fill the bottom blob with Dark Lavender, the middle with Medium Purple, and the top with Light Lilac. 4) Finish: Add a white highlight curve on the left side of each blob.'
+      },
+      {
+        "emoji": '🎈',
+        "label": 'Float Away',
+        "prompt": 'Construct a realistic balloon using a radial gradient. 1) Defs: Create a <radialGradient> named "sphere-shine". Center it at 30% 30%. Colors: White (offset 0%) -> Bright Red (offset 40%) -> Dark Red (offset 100%). 2) Main Shape: A vertical ellipse (rx=150, ry=180). Fill it with the "sphere-shine" gradient. 3) Knot: A small triangle at the bottom center. 4) String: A single bezier curve path (stroke-width="4", stroke="#555") flowing down in an S-shape.'
+      },
+      {
+        "emoji": '💎',
+        "label": 'Prism Shard',
+        "prompt": 'Construct a diamond using distinct polygonal facets. 1) Shape: A "kite" shape or teardrop shape. 2) Composition: Divide the shape into 6 triangular distinct polygons that fit together like a puzzle. 3) Coloring: Do not use gradients. Fill each triangle with a different shade of Cyan, Blue, and Violet to simulate light refraction. 4) Sparkle: Add two "star" shapes (four-pointed polygons) in pure white at the top corners.'
+      },
+      {
+        "emoji": '🧬',
+        "label": 'Glass Helix',
+        "prompt": 'Construct a DNA strand using transparency. 1) Defs: Create a linear gradient from Teal to Blue. 2) Strands: Draw two thick sine-wave paths that cross each other twice. 3) Rungs: Draw horizontal rounded rectangles connecting the waves. 4) Visual Trick: Set `fill-opacity="0.6"` on the strands. Where they overlap, the colors will combine to create a darker shade, simulating a 3D glass structure.'
+      }
+    ];
 
     return (
       <div className="min-h-screen w-full relative overflow-hidden bg-slate-50 text-slate-900">
@@ -376,8 +376,8 @@ function App() {
             <div className="flex flex-col items-center text-center mb-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
               <div className="relative mb-6">
                 <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-green-200 to-emerald-200 blur-2xl opacity-60 landing-glow" />
-                <div className="relative w-20 h-20 rounded-2xl overflow-hidden shadow-2xl landing-float bg-white flex items-center justify-center">
-                  <img src="/logo.png" alt="SVG Mint logo" className="w-12 h-12 object-contain" />
+                <div className="relative w-30 h-30 flex items-center justify-center landing-float">
+                  <img src="/logo.png" alt="SVG Mint logo" className="w-full h-full object-contain drop-shadow-2xl" />
                 </div>
               </div>
               <h1 className="text-5xl sm:text-6xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Mint</h1>
@@ -391,16 +391,7 @@ function App() {
                 placeholder="Describe the SVG you want to generate..."
                 allowImage
               />
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={keepBackground}
-                    onChange={(e) => setKeepBackground(e.target.checked)}
-                    className="h-4 w-4 accent-green-600"
-                  />
-                  Keep background
-                </label>
+              <div className="mt-3 text-xs text-slate-500">
                 <span>Press Enter to generate</span>
               </div>
               {error && (
@@ -413,18 +404,18 @@ function App() {
             {/* Conversation Starters */}
             <div className="mt-8 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
               <h2 className="text-center text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Try these prompts</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {conversationStarters.map((starter, index) => (
                   <button
                     key={index}
                     onClick={() => handleGenerate(starter.prompt)}
                     disabled={isLoading}
-                    className={`group relative overflow-hidden ${starter.bg} ${starter.border} border ${starter.hover} rounded-2xl p-4 text-left transition-all duration-300 hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
+                    className="group relative overflow-hidden bg-white/80 border border-slate-200 hover:border-slate-300 hover:bg-white rounded-xl p-3 transition-all duration-300 hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
-                    <div className={`absolute inset-0 bg-gradient-to-br ${starter.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
-                    <div className="relative flex items-start gap-3">
-                      <span className="text-2xl flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300">{starter.emoji}</span>
-                      <p className="text-sm font-medium text-slate-700 leading-snug">{starter.label}</p>
+                    <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="relative flex items-center justify-center gap-2">
+                      <span className="text-xl flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300">{starter.emoji}</span>
+                      <p className="text-sm font-medium text-slate-700">{starter.label}</p>
                     </div>
                   </button>
                 ))}
@@ -441,7 +432,7 @@ function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-hidden font-sans text-slate-900">
 
       {/* Sidebar / Left Panel */}
-      <aside className="w-full md:w-[400px] flex-shrink-0 bg-white border-r border-slate-200 flex flex-col h-[100vh] z-20 shadow-2xl">
+      <aside className="w-full md:w-[400px] flex-shrink-0 bg-white border-r border-slate-200 flex flex-col h-dvh z-20 shadow-2xl">
         <div className="p-6 border-b border-slate-100 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
@@ -449,12 +440,12 @@ function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Mint</h1>
-              <p className="text-xs text-slate-400 font-medium">AI-Powered Semantic Vector Editor Powered by Gemini 3</p>
+              <p className="text-xs text-slate-400 font-medium">AI-Powered Semantic Vector Editor with Gemini 3</p>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-slate-200">
+        <div className="flex-1 overflow-y-auto p-6 pb-20 md:pb-14 space-y-8 scrollbar-thin scrollbar-thumb-slate-200">
 
           {/* Generator Section */}
           {!svgCode ? (
@@ -471,15 +462,6 @@ function App() {
                 placeholder="a minimalist drone icon..."
                 allowImage
               />
-              <label className="flex items-center gap-2 text-xs text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={keepBackground}
-                  onChange={(e) => setKeepBackground(e.target.checked)}
-                  className="h-4 w-4 accent-green-600"
-                />
-                Keep background
-              </label>
 
               {/* Shortcuts */}
               <div className="grid grid-cols-2 gap-3 pt-2">
@@ -497,20 +479,46 @@ function App() {
           ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-500">
               {/* Quick Actions */}
-              <div className="flex gap-2 pb-4 overflow-x-auto no-scrollbar">
-                <button onClick={handleRemoveBackground} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors whitespace-nowrap">
-                  <Eraser className="w-3.5 h-3.5" /> Remove BG
-                </button>
-                <button
-                  onClick={handleUndo}
-                  disabled={history.length === 0}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Undo className="w-3.5 h-3.5" /> Undo
-                </button>
-                <button onClick={() => { setSvgCode(null); setSelectedIds([]); setHistory([]); setLockedIds(new Set()); setHiddenIds(new Set()); setShowCode(false); setError(null); setView('landing'); }} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors whitespace-nowrap">
-                  <X className="w-3.5 h-3.5" /> Start Over
-                </button>
+              <div className="space-y-3 pb-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handleAddBackground}
+                    disabled={isPreviewActive}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add BG
+                  </button>
+                  <button
+                    onClick={handleRemoveBackground}
+                    disabled={isPreviewActive}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Eraser className="w-3.5 h-3.5" /> Remove BG
+                  </button>
+                  <button
+                    onClick={handleUndo}
+                    disabled={history.length === 0 || isPreviewActive}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Undo className="w-3.5 h-3.5" /> Undo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSvgCode(null);
+                      setSelectedIds([]);
+                      setHistory([]);
+                      setLockedIds(new Set());
+                      setHiddenIds(new Set());
+                      setShowCode(false);
+                      setError(null);
+                      clearPreviewState();
+                      setView('landing');
+                    }}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" /> Start Over
+                  </button>
+                </div>
               </div>
 
               {/* Active Selection / Chat */}
@@ -531,11 +539,48 @@ function App() {
                   onSubmit={handleEdit}
                   isLoading={isLoading}
                   placeholder={primarySelectedId ? `Instruct AI to edit #${primarySelectedId}...` : "Describe global changes..."}
+                  allowImage={Boolean(primarySelectedId)}
                 />
+
+                {isPreviewActive && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3 animate-in fade-in duration-300">
+                    <div className="text-xs font-semibold text-emerald-800">
+                      AI preview ready ({primarySelectedId ? `layer-scoped: #${primarySelectedId}` : 'global edit'})
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowPreviewBefore(true)}
+                        className={`px-2.5 py-1.5 text-[11px] rounded-md border ${showPreviewBefore ? 'border-emerald-500 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                      >
+                        Before
+                      </button>
+                      <button
+                        onClick={() => setShowPreviewBefore(false)}
+                        className={`px-2.5 py-1.5 text-[11px] rounded-md border ${!showPreviewBefore ? 'border-emerald-500 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                      >
+                        After
+                      </button>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          onClick={handleDiscardPreview}
+                          className="px-2.5 py-1.5 text-[11px] rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                        >
+                          Discard
+                        </button>
+                        <button
+                          onClick={handleApplyPreview}
+                          className="px-2.5 py-1.5 text-[11px] rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                        >
+                          Apply changes
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Manual Controls - Context Aware */}
-              {primarySelectedId && selectedIds.length === 1 && (
+              {!isPreviewActive && primarySelectedId && selectedIds.length === 1 && (
                 <div className="pt-2">
                   <ManualControls
                     selectedId={primarySelectedId}
@@ -550,7 +595,7 @@ function App() {
               {/* Layer Tree */}
               <div className="pt-4 border-t border-slate-200">
                 <LayerTree
-                  svgCode={svgCode}
+                  svgCode={displaySvg}
                   selectedIds={selectedIds}
                   onSelectionChange={handleSelectionChange}
                   onMoveUp={handleMoveLayerUp}
@@ -630,7 +675,7 @@ function App() {
               </div>
             </div>
             <pre className="flex-1 p-6 overflow-auto font-mono text-sm leading-relaxed custom-scrollbar selection:bg-[#264f78]">
-              {svgCode}
+              {displaySvg}
             </pre>
           </div>
 
@@ -640,7 +685,7 @@ function App() {
               }`}
           >
             <SvgPreview
-              svgCode={svgCode}
+              svgCode={displaySvg}
               onElementSelect={(id) => setSelectedIds([id])}
               selectedIds={selectedIds}
               onElementDrag={handleElementDrag}
@@ -653,7 +698,10 @@ function App() {
         {svgCode && !showCode && (
           <div className="mt-8 text-slate-400 text-sm font-medium z-10 animate-in fade-in slide-in-from-bottom-4 delay-500">
             <span className="flex items-center gap-2">
-              <Layers className="w-4 h-4" /> Click component to select layer
+              <Layers className="w-4 h-4" />
+              {isPreviewActive
+                ? `Previewing ${showPreviewBefore ? 'before' : 'after'} state`
+                : 'Click component to select layer'}
             </span>
           </div>
         )}
@@ -665,7 +713,8 @@ function App() {
             <div className="space-y-1.5">
               <button
                 onClick={() => handleExport('svg')}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left"
+                disabled={isPreviewActive}
+                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
                   <Code2 className="w-3 h-3 text-green-600" /> SVG
@@ -673,7 +722,8 @@ function App() {
               </button>
               <button
                 onClick={() => handleExport('png')}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left"
+                disabled={isPreviewActive}
+                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
                   <FileImage className="w-3 h-3 text-green-600" /> PNG
@@ -681,7 +731,8 @@ function App() {
               </button>
               <button
                 onClick={() => handleExport('jpg')}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left"
+                disabled={isPreviewActive}
+                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
                   <FileJson className="w-3 h-3 text-green-600" /> JPG
@@ -689,7 +740,8 @@ function App() {
               </button>
               <button
                 onClick={() => handleExport('pdf')}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left"
+                disabled={isPreviewActive}
+                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
                   <FileType className="w-3 h-3 text-green-600" /> PDF

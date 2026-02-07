@@ -1,11 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Send, Loader2, Paperclip } from 'lucide-react';
 
 export default function PromptInput({ onSubmit, isLoading, placeholder = "Describe your SVG...", allowImage = false }) {
     const [prompt, setPrompt] = useState("");
     const [imageFile, setImageFile] = useState(null);
-    const [previewUrl, setPreviewUrl] = useState(null);
     const fileInputRef = useRef(null);
+    const previewUrl = useMemo(() => {
+        if (!imageFile) return null;
+        return URL.createObjectURL(imageFile);
+    }, [imageFile]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -36,16 +39,12 @@ export default function PromptInput({ onSubmit, isLoading, placeholder = "Descri
     };
 
     useEffect(() => {
-        if (!imageFile) {
-            setPreviewUrl(null);
-            return;
-        }
-        const url = URL.createObjectURL(imageFile);
-        setPreviewUrl(url);
         return () => {
-            URL.revokeObjectURL(url);
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
         };
-    }, [imageFile]);
+    }, [previewUrl]);
 
     return (
         <form onSubmit={handleSubmit} className="relative w-full">
