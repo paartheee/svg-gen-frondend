@@ -301,55 +301,67 @@ function App() {
 
   if (view === 'landing') {
     const conversationStarters = [
-      {
-        emoji: '🚀',
-        text: 'A minimalist rocket icon with flames',
-        gradient: 'from-red-500 to-orange-500',
-        bg: 'bg-red-50',
-        border: 'border-red-200',
-        hover: 'hover:bg-red-100'
-      },
-      {
-        emoji: '🌊',
-        text: 'Ocean waves with a sunset gradient',
-        gradient: 'from-blue-500 to-purple-500',
-        bg: 'bg-blue-50',
-        border: 'border-blue-200',
-        hover: 'hover:bg-blue-100'
-      },
-      {
-        emoji: '🦁',
-        text: 'Geometric lion head in gold tones',
-        gradient: 'from-yellow-500 to-amber-600',
-        bg: 'bg-yellow-50',
-        border: 'border-yellow-200',
-        hover: 'hover:bg-yellow-100'
-      },
-      {
-        emoji: '🌿',
-        text: 'Abstract leaf pattern with organic curves',
-        gradient: 'from-green-500 to-emerald-600',
-        bg: 'bg-green-50',
-        border: 'border-green-200',
-        hover: 'hover:bg-green-100'
-      },
-      {
-        emoji: '⚡',
-        text: 'Lightning bolt with electric glow effect',
-        gradient: 'from-cyan-500 to-blue-600',
-        bg: 'bg-cyan-50',
-        border: 'border-cyan-200',
-        hover: 'hover:bg-cyan-100'
-      },
-      {
-        emoji: '🎨',
-        text: 'Modern abstract logo with vibrant colors',
-        gradient: 'from-pink-500 to-rose-600',
-        bg: 'bg-pink-50',
-        border: 'border-pink-200',
-        hover: 'hover:bg-pink-100'
-      }
-    ];
+  {
+    emoji: '🍬',
+    label: 'Pop Art Candy',
+    // Fix: Explicitly asks for gradients and rounded rects to fix the "blocky" look
+    prompt: 'A modern, glossy gummy bear icon. 1) Shape: Use a rounded rectangle base with smaller rounded circles for ears and limbs to create a soft, gummy silhouette. 2) Color: Use a vertical linear gradient from deep magenta (#db2777) at the bottom to hot pink (#f472b6) at the top. 3) Detail: Add a semi-transparent white oval on the belly (opacity 0.3) and a sharp white curve on the head to simulate a plastic/jelly texture. No outlines, just vibrant color fields.',
+    gradient: 'from-pink-500 to-fuchsia-500',
+    bg: 'bg-pink-50',
+    border: 'border-pink-200',
+    hover: 'hover:bg-pink-100'
+  },
+  {
+    emoji: '🪐',
+    label: 'Retro Saturn',
+    // Fix: Solves the "rings cutting through planet" issue by ordering layers
+    prompt: 'A vibrant, flat-vector illustration of Saturn. 1) Layering Order: First draw the "Back Rings" (the part behind the planet), then draw the "Planet Sphere", then draw the "Front Rings". 2) Planet: A perfect circle with a subtle diagonal gradient (Cream to soft yellow). 3) Rings: Use thick bands of Teal, Tangerine, and Magenta. The rings should be elliptical and tilted 15 degrees. 4) Style: Clean vector lines, no blur, high contrast.',
+    gradient: 'from-amber-500 to-orange-500',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    hover: 'hover:bg-amber-100'
+  },
+  {
+    emoji: '🍦',
+    label: 'Pastel Swirl',
+    // Fix: Forces the "stacked" look to avoid the messy single stroke
+    prompt: 'A soft-serve ice cream cone. 1) Ice Cream: Composed of three distinct, stacked "blob" shapes that get smaller towards the top. Use a different shade of purple for each stack (Dark Purple base -> Medium Lavender -> Light Lilac tip) to create depth without lines. 2) Cone: A sharp triangle in golden-brown with a cross-hatch pattern made of darker brown lines. 3) Lighting: Add a soft white highlight on the left side of each ice cream blob.',
+    gradient: 'from-purple-500 to-violet-500',
+    bg: 'bg-purple-50',
+    border: 'border-purple-200',
+    hover: 'hover:bg-purple-100'
+  },
+  {
+    emoji: '🎈',
+    label: 'Float Away',
+    // Fix: Adds specific instructions for the "3D" look using gradients
+    prompt: 'A high-fidelity red balloon. 1) Body: A perfect egg-shape (ellipse) tilted slightly. Fill with a radial gradient (Center: Bright Red #ef4444, Edge: Dark Cherry #991b1b) to give it a spherical 3D look. 2) Reflection: A hard-edged white oval in the top-right corner (opacity 0.8) to show surface gloss. 3) String: A thin, dark grey bezier curve hanging loosely from the bottom knot.',
+    gradient: 'from-red-500 to-rose-500',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    hover: 'hover:bg-red-100'
+  },
+  {
+    emoji: '💎',
+    label: 'Prism Shard',
+    // Fix: Reinforces the "Faceted" look which works well with flat colors
+    prompt: 'A crystal diamond icon. 1) Geometry: A polygon with sharp, angular edges. 2) Facets: Divide the shape into 6-8 triangular facets. Fill each facet with a distinct color from a cool-spectrum palette (Cyan, Electric Blue, Violet, Indigo) to simulate light refraction. Do not use gradients here—use solid blocks of varying lightness to show the angles. 3) Sparkle: Add two small white "star" shapes at the corners.',
+    gradient: 'from-indigo-500 to-fuchsia-500',
+    bg: 'bg-indigo-50',
+    border: 'border-indigo-200',
+    hover: 'hover:bg-indigo-100'
+  },
+  {
+    emoji: '🧬',
+    label: 'Glass Helix',
+    // Fix: Simplifies the complex "blur" request into something SVGs handle well (opacity)
+    prompt: 'A stylized DNA helix. 1) Structure: Two thick, sinusoidal wave paths that intertwine. 2) Color: One path is Cyan, the other is Teal. 3) Transparency: Where the paths overlap, use `fill-opacity="0.5"` or a blend mode color to simulate glass transparency. 4) Rungs: Connect the waves with simple horizontal lines with rounded caps. Keep the design minimal and abstract.',
+    gradient: 'from-teal-500 to-cyan-500',
+    bg: 'bg-teal-50',
+    border: 'border-teal-200',
+    hover: 'hover:bg-teal-100'
+  }
+];
 
     return (
       <div className="min-h-screen w-full relative overflow-hidden bg-slate-50 text-slate-900">
@@ -365,7 +377,7 @@ function App() {
               <div className="relative mb-6">
                 <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-green-200 to-emerald-200 blur-2xl opacity-60 landing-glow" />
                 <div className="relative w-20 h-20 rounded-2xl overflow-hidden shadow-2xl landing-float bg-white flex items-center justify-center">
-                  <img src="/logo.png" alt="SVG Surgeon logo" className="w-12 h-12 object-contain" />
+                  <img src="/logo.png" alt="SVG Mint logo" className="w-12 h-12 object-contain" />
                 </div>
               </div>
               <h1 className="text-5xl sm:text-6xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Mint</h1>
@@ -405,14 +417,14 @@ function App() {
                 {conversationStarters.map((starter, index) => (
                   <button
                     key={index}
-                    onClick={() => handleGenerate(starter.text)}
+                    onClick={() => handleGenerate(starter.prompt)}
                     disabled={isLoading}
                     className={`group relative overflow-hidden ${starter.bg} ${starter.border} border ${starter.hover} rounded-2xl p-4 text-left transition-all duration-300 hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
                   >
                     <div className={`absolute inset-0 bg-gradient-to-br ${starter.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
                     <div className="relative flex items-start gap-3">
                       <span className="text-2xl flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300">{starter.emoji}</span>
-                      <p className="text-sm font-medium text-slate-700 leading-snug">{starter.text}</p>
+                      <p className="text-sm font-medium text-slate-700 leading-snug">{starter.label}</p>
                     </div>
                   </button>
                 ))}
