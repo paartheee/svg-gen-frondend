@@ -1,7 +1,17 @@
 import React from 'react';
 import { Trash2, Copy } from 'lucide-react';
 
-export default function ManualControls({ selectedId, onColorChange, onScaleChange, onDelete, onDuplicate }) {
+export default function ManualControls({
+    selectedId,
+    onColorChange,
+    onScaleChange,
+    onRotationChange,
+    onOpacityChange,
+    onStrokeColorChange,
+    onStrokeWidthChange,
+    onDelete,
+    onDuplicate
+}) {
     if (!selectedId) return null;
 
     return (
@@ -64,6 +74,63 @@ export default function ManualControls({ selectedId, onColorChange, onScaleChang
                     onChange={(e) => onScaleChange(parseFloat(e.target.value))}
                     className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-600"
                 />
+            </div>
+
+            {/* Rotation */}
+            <div className="space-y-2">
+                <label className="flex justify-between text-xs font-semibold text-slate-500">
+                    <span>Rotation</span>
+                    <span className="text-slate-400">Deg</span>
+                </label>
+                <input
+                    type="range"
+                    min="0"
+                    max="360"
+                    step="15"
+                    defaultValue="0"
+                    onChange={(e) => onRotationChange(parseInt(e.target.value))}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                />
+            </div>
+
+            {/* Opacity */}
+            <div className="space-y-2">
+                <label className="flex justify-between text-xs font-semibold text-slate-500">
+                    <span>Opacity</span>
+                    <span className="text-slate-400">%</span>
+                </label>
+                <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    defaultValue="1"
+                    onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                />
+            </div>
+
+            {/* Stroke */}
+            <div className="space-y-2 border-t border-slate-100 pt-2">
+                <label className="text-xs font-semibold text-slate-500">Stroke</label>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="color"
+                        className="w-8 h-8 rounded-full overflow-hidden p-0 border-0 cursor-pointer"
+                        onChange={(e) => onStrokeColorChange(e.target.value)}
+                        title="Stroke Color"
+                    />
+                    <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        defaultValue="0"
+                        onChange={(e) => onStrokeWidthChange(parseFloat(e.target.value))}
+                        className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                        title="Stroke Width"
+                    />
+                </div>
             </div>
         </div>
     );

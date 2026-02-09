@@ -2,14 +2,53 @@ import React, { useEffect, useState } from 'react';
 import {
   editSvg,
   generateSvg,
+  cleanupSvg,
+  semanticLabelSvg,
 } from './api';
 import SvgPreview from './components/SvgPreview';
 import PromptInput from './components/PromptInput';
 import ManualControls from './components/ManualControls';
 import LayerTree from './components/LayerTree';
-import { addBackground, removeBackground, updateElementColor, updateElementScale, removeElement, updateElementPosition, duplicateElement, moveLayerUp, moveLayerDown, moveLayerBefore, moveLayerAfter } from './utils/svgUtils';
+import ThemeSelector from './components/ThemeSelector';
+import AssetsPanel from './components/AssetsPanel';
+import AnimationPanel from './components/AnimationPanel';
+import ConfirmationModal from './components/ConfirmationModal';
+import { addBackground, removeBackground, updateElementColor, updateElementScale, removeElement, updateElementPosition, duplicateElement, moveLayerUp, moveLayerDown, moveLayerBefore, moveLayerAfter, updateElementRotation, updateElementOpacity, updateElementStroke, applyTheme, injectSvgString, extractSvgSnippet, addAnimation, removeAnimation } from './utils/svgUtils';
 import { downloadSVG, downloadImage, downloadPDF } from './utils/exportUtils';
-import { Code2, Layers, X, Sparkles, FileJson, FileImage, FileType, Undo, Plus, Eraser } from 'lucide-react';
+import { Code2, Layers, X, Sparkles, FileJson, FileImage, FileType, Undo, Plus, Eraser, Wand2, FolderTree, Palette, Library, LayoutGrid, Clapperboard, Clipboard } from 'lucide-react';
+
+const conversationStarters = [
+  {
+    emoji: '🍬',
+    label: 'Pop Art Candy',
+    prompt: 'Construct a gummy bear using geometric primitives. 1) Define a <linearGradient> from hot pink (#ff0080) to purple (#8000ff). 2) Head: A large rounded rectangle (rx=40). 3) Ears: Two perfect circles behind the head. 4) Body: A larger rounded rectangle below the head. 5) Arms/Legs: Four smaller rounded rectangles attached to the body. 6) Material: Apply the gradient to all shapes. Overlay a semi-transparent white ellipse on the belly and forehead to create a "gummy" gloss effect.'
+  },
+  {
+    emoji: '🪐',
+    label: 'Retro Saturn',
+    prompt: 'Construct a flat Saturn icon with high contrast. 1) Define <defs>: Create three solid colors: Deep Cream, Teal, and Magenta. 2) Layer 1 (Back): Draw the top half of three concentric ellipses (the rings) appearing *behind* the planet. 3) Layer 2 (Planet): Draw a perfect circle in the center (Deep Cream color). 4) Layer 3 (Front): Draw the bottom half of the three concentric ellipses (the rings) appearing *in front* of the planet. 5) Detail: The rings must have a 20-degree rotation. No gradients, just clean solid shapes.'
+  },
+  {
+    emoji: '🍦',
+    label: 'Pastel Swirl',
+    prompt: 'Construct a soft-serve ice cream. 1) Cone: A strictly triangular path pointing down, filled with a sandy beige color. Overlay a pattern of thin diagonal lines (stroke-width="2") in darker brown. 2) Cream: Create three stacked shapes. The bottom is wide and bulbous, the middle is smaller, and the top is a teardrop point. 3) Color: Use a stepped gradient strategy—fill the bottom blob with Dark Lavender, the middle with Medium Purple, and the top with Light Lilac. 4) Finish: Add a white highlight curve on the left side of each blob.'
+  },
+  {
+    emoji: '🎈',
+    label: 'Float Away',
+    prompt: 'Construct a realistic balloon using a radial gradient. 1) Defs: Create a <radialGradient> named "sphere-shine". Center it at 30% 30%. Colors: White (offset 0%) -> Bright Red (offset 40%) -> Dark Red (offset 100%). 2) Main Shape: A vertical ellipse (rx=150, ry=180). Fill it with the "sphere-shine" gradient. 3) Knot: A small triangle at the bottom center. 4) String: A single bezier curve path (stroke-width="4", stroke="#555") flowing down in an S-shape.'
+  },
+  {
+    emoji: '💎',
+    label: 'Prism Shard',
+    prompt: 'Construct a diamond using distinct polygonal facets. 1) Shape: A "kite" shape or teardrop shape. 2) Composition: Divide the shape into 6 triangular distinct polygons that fit together like a puzzle. 3) Coloring: Do not use gradients. Fill each triangle with a different shade of Cyan, Blue, and Violet to simulate light refraction. 4) Sparkle: Add two "star" shapes (four-pointed polygons) in pure white at the top corners.'
+  },
+  {
+    emoji: '🧬',
+    label: 'Glass Helix',
+    prompt: 'Construct a DNA strand using transparency. 1) Defs: Create a linear gradient from Teal to Blue. 2) Strands: Draw two thick sine-wave paths that cross each other twice. 3) Rungs: Draw horizontal rounded rectangles connecting the waves. 4) Visual Trick: Set `fill-opacity="0.6"` on the strands. Where they overlap, the colors will combine to create a darker shade, simulating a 3D glass structure.'
+  }
+];
 
 function App() {
   const [svgCode, setSvgCode] = useState(null);
@@ -21,12 +60,57 @@ function App() {
   const [history, setHistory] = useState([]);
   const [lockedIds, setLockedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds] = useState(new Set());
+  const [showThemes, setShowThemes] = useState(false);
   const [view, setView] = useState('landing');
   const [loadingFact, setLoadingFact] = useState('');
   const [loadingPercent, setLoadingPercent] = useState(0);
   const [previewBaseSvg, setPreviewBaseSvg] = useState(null);
   const [previewSvg, setPreviewSvg] = useState(null);
   const [showPreviewBefore, setShowPreviewBefore] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState('generator'); // 'generator' | 'assets'
+  const [assets, setAssets] = useState([]);
+  const [showStartOverModal, setShowStartOverModal] = useState(false);
+
+  // Persistence
+  useEffect(() => {
+    const savedSvg = localStorage.getItem('svgMint_svgCode');
+    const savedHistory = localStorage.getItem('svgMint_history');
+    if (savedSvg) {
+      setSvgCode(savedSvg);
+      setView('editor');
+    }
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Failed to parse history", e);
+      }
+    }
+    const savedAssets = localStorage.getItem('svgMint_assets');
+    if (savedAssets) {
+      try {
+        setAssets(JSON.parse(savedAssets));
+      } catch (e) {
+        console.error("Failed to parse assets", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (svgCode) {
+      localStorage.setItem('svgMint_svgCode', svgCode);
+    } else {
+      localStorage.removeItem('svgMint_svgCode');
+    }
+  }, [svgCode]);
+
+  useEffect(() => {
+    localStorage.setItem('svgMint_history', JSON.stringify(history));
+  }, [history]);
+
+  useEffect(() => {
+    localStorage.setItem('svgMint_assets', JSON.stringify(assets));
+  }, [assets]);
 
   const primarySelectedId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
   const isPreviewActive = Boolean(previewBaseSvg && previewSvg);
@@ -90,6 +174,46 @@ function App() {
     clearPreviewState();
   };
 
+  const handleCleanup = async () => {
+    if (!svgCode || isPreviewActive) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await cleanupSvg(svgCode);
+      setHistory(prev => [...prev, svgCode]);
+      setSvgCode(result.svg_code);
+      setModelUsed(result.model_used);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Cleanup failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSemanticLabel = async () => {
+    if (!svgCode || isPreviewActive) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await semanticLabelSvg(svgCode);
+      setHistory(prev => [...prev, svgCode]);
+      setSvgCode(result.svg_code);
+      setModelUsed(result.model_used);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Auto-grouping failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleApplyTheme = (theme) => {
+    if (!svgCode || isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = applyTheme(svgCode, theme);
+    setSvgCode(newSvg);
+    setShowThemes(false);
+  };
+
   // Manual Edit Handlers
   const handleManualColor = (color) => {
     if (!svgCode || !primarySelectedId || isPreviewActive) return;
@@ -102,6 +226,34 @@ function App() {
     if (!svgCode || !primarySelectedId || isPreviewActive) return;
     setHistory(prev => [...prev, svgCode]);
     const newSvg = updateElementScale(svgCode, primarySelectedId, factor);
+    setSvgCode(newSvg);
+  };
+
+  const handleManualRotation = (angle) => {
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = updateElementRotation(svgCode, primarySelectedId, angle);
+    setSvgCode(newSvg);
+  };
+
+  const handleManualOpacity = (opacity) => {
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = updateElementOpacity(svgCode, primarySelectedId, opacity);
+    setSvgCode(newSvg);
+  };
+
+  const handleManualStrokeColor = (color) => {
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = updateElementStroke(svgCode, primarySelectedId, color, undefined);
+    setSvgCode(newSvg);
+  };
+
+  const handleManualStrokeWidth = (width) => {
+    if (!svgCode || !primarySelectedId || isPreviewActive) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = updateElementStroke(svgCode, primarySelectedId, undefined, width);
     setSvgCode(newSvg);
   };
 
@@ -265,6 +417,58 @@ function App() {
       newSvg = moveLayerDown(newSvg, id);
     });
     setSvgCode(newSvg);
+  };
+
+  const handleSaveAsset = () => {
+    if (!svgCode || selectedIds.length === 0) return;
+    const snippet = extractSvgSnippet(svgCode, selectedIds);
+    const newAsset = {
+      id: `asset-${Date.now()}`,
+      name: `Asset ${assets.length + 1}`,
+      preview: snippet // Storing full snippet string as preview for now
+    };
+    setAssets(prev => [...prev, newAsset]);
+    // Optional: notification of success
+  };
+
+  const handleUseAsset = (asset) => {
+    if (!svgCode) return;
+    setHistory(prev => [...prev, svgCode]);
+    const result = injectSvgString(svgCode, asset.preview);
+    setSvgCode(result.svg);
+    setSelectedIds([result.newId]);
+  };
+
+  const handleDeleteAsset = (id) => {
+    setAssets(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleApplyAnimation = (id, config) => {
+    if (!svgCode) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = addAnimation(svgCode, id, config);
+    setSvgCode(newSvg);
+  };
+
+  const handleRemoveAnimation = (id) => {
+    if (!svgCode) return;
+    setHistory(prev => [...prev, svgCode]);
+    const newSvg = removeAnimation(svgCode, id);
+    setSvgCode(newSvg);
+  };
+
+  const handleStartOverConfirm = () => {
+    setSvgCode(null);
+    setSelectedIds([]);
+    setHistory([]);
+    setLockedIds(new Set());
+    setHiddenIds(new Set());
+    setShowCode(false);
+    setError(null);
+    setPreviewBaseSvg(null);
+    setPreviewSvg(null);
+    setShowPreviewBefore(false);
+    setView('landing');
   };
 
 
@@ -440,201 +644,268 @@ function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-green-700 to-emerald-600">SVG Mint</h1>
-              <p className="text-xs text-slate-400 font-medium">AI-Powered Semantic Vector Editor with Gemini 3</p>
+              <p className="text-xs text-slate-400 font-medium">AI-Powered Semantic Editor</p>
             </div>
+          </div>
+
+          {/* Sidebar Tabs */}
+          <div className="flex pt-6 gap-6">
+            <button
+              onClick={() => setSidebarTab('generator')}
+              className={`text-xs font-bold uppercase tracking-wider pb-2 border-b-2 transition-colors ${sidebarTab === 'generator' ? 'text-green-600 border-green-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+            >
+              Generator
+            </button>
+            <button
+              onClick={() => setSidebarTab('assets')}
+              className={`flex items-center gap-2 pb-3 text-xs font-semibold border-b-2 transition-colors ${sidebarTab === 'assets' ? 'text-green-600 border-green-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+            >
+              <Library className="w-3.5 h-3.5" /> My Assets
+            </button>
+            <button
+              onClick={() => setSidebarTab('animation')}
+              className={`flex items-center gap-2 pb-3 text-xs font-semibold border-b-2 transition-colors ${sidebarTab === 'animation' ? 'text-green-600 border-green-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+            >
+              <Clapperboard className="w-3.5 h-3.5" /> Animate
+            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 pb-20 md:pb-14 space-y-8 scrollbar-thin scrollbar-thumb-slate-200">
-
-          {/* Generator Section */}
-          {!svgCode ? (
-            <div className="space-y-4 animate-in fade-in slide-in-from-left-8 duration-500">
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold text-slate-800">Start Creating</h2>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  Describe your vector graphic. We'll generate a semantically structured SVG optimized for editing.
-                </p>
-              </div>
-              <PromptInput
-                onSubmit={handleGenerate}
-                isLoading={isLoading}
-                placeholder="a minimalist drone icon..."
-                allowImage
-              />
-
-              {/* Shortcuts */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                {['Red Rocket Icon', 'Blue Ocean Scene', 'Geometric Lion', 'Abstract Logo'].map(preset => (
-                  <button
-                    key={preset}
-                    onClick={() => handleGenerate(preset)}
-                    className="px-4 py-3 text-sm text-left font-medium text-slate-600 bg-slate-50 hover:bg-green-50 hover:text-green-700 rounded-xl transition-colors border border-slate-100"
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div className="flex-1 overflow-y-auto pb-20 md:pb-14 scrollbar-thin scrollbar-thumb-slate-200">
+          {sidebarTab === 'assets' ? (
+            <AssetsPanel
+              assets={assets}
+              onUseAsset={handleUseAsset}
+              onDeleteAsset={handleDeleteAsset}
+              onSaveSelection={handleSaveAsset}
+              hasSelection={selectedIds.length > 0}
+            />
+          ) : sidebarTab === 'animation' ? (
+            <AnimationPanel
+              selectedId={primarySelectedId}
+              onApplyAnimation={handleApplyAnimation}
+              onRemoveAnimation={handleRemoveAnimation}
+            />
           ) : (
-            <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-500">
-              {/* Quick Actions */}
-              <div className="space-y-3 pb-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handleAddBackground}
-                    disabled={isPreviewActive}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add BG
-                  </button>
-                  <button
-                    onClick={handleRemoveBackground}
-                    disabled={isPreviewActive}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Eraser className="w-3.5 h-3.5" /> Remove BG
-                  </button>
-                  <button
-                    onClick={handleUndo}
-                    disabled={history.length === 0 || isPreviewActive}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Undo className="w-3.5 h-3.5" /> Undo
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSvgCode(null);
-                      setSelectedIds([]);
-                      setHistory([]);
-                      setLockedIds(new Set());
-                      setHiddenIds(new Set());
-                      setShowCode(false);
-                      setError(null);
-                      clearPreviewState();
-                      setView('landing');
-                    }}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" /> Start Over
-                  </button>
-                </div>
-              </div>
+            <div className="p-6 space-y-8">
 
-              {/* Active Selection / Chat */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-green-500" />
-                    {primarySelectedId ? "Edit Selection" : "Global Edit"}
-                  </h2>
-                  {primarySelectedId && (
-                    <span className="text-[10px] font-mono px-2 py-1 bg-green-100 text-green-700 rounded-md">
-                      #{primarySelectedId}
-                    </span>
-                  )}
-                </div>
+              {/* Generator Section */}
+              {!svgCode ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-left-8 duration-500">
+                  <div className="space-y-2">
+                    <h2 className="text-lg font-bold text-slate-800">Start Creating</h2>
+                    <p className="text-sm text-slate-500 leading-relaxed">
+                      Describe your vector graphic. We'll generate a semantically structured SVG optimized for editing.
+                    </p>
+                  </div>
+                  <PromptInput
+                    onSubmit={handleGenerate}
+                    isLoading={isLoading}
+                    placeholder="a minimalist drone icon..."
+                    allowImage
+                  />
 
-                <PromptInput
-                  onSubmit={handleEdit}
-                  isLoading={isLoading}
-                  placeholder={primarySelectedId ? `Instruct AI to edit #${primarySelectedId}...` : "Describe global changes..."}
-                  allowImage={Boolean(primarySelectedId)}
-                />
-
-                {isPreviewActive && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3 animate-in fade-in duration-300">
-                    <div className="text-xs font-semibold text-emerald-800">
-                      AI preview ready ({primarySelectedId ? `layer-scoped: #${primarySelectedId}` : 'global edit'})
-                    </div>
-                    <div className="flex items-center gap-2">
+                  {/* Shortcuts */}
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    {conversationStarters.map((starter) => (
                       <button
-                        onClick={() => setShowPreviewBefore(true)}
-                        className={`px-2.5 py-1.5 text-[11px] rounded-md border ${showPreviewBefore ? 'border-emerald-500 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                        key={starter.label}
+                        onClick={() => handleGenerate(starter.prompt)}
+                        className="flex items-center gap-3 px-4 py-3 text-sm text-left font-medium text-slate-600 bg-white shadow-sm border border-slate-200 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700 rounded-xl transition-all group"
                       >
-                        Before
+                        <span className="text-xl group-hover:scale-110 transition-transform">{starter.emoji}</span>
+                        <span className="line-clamp-1">{starter.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-500">
+                  {/* Quick Actions */}
+                  <div className="space-y-3 pb-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={handleAddBackground}
+                        disabled={isPreviewActive}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add BG
                       </button>
                       <button
-                        onClick={() => setShowPreviewBefore(false)}
-                        className={`px-2.5 py-1.5 text-[11px] rounded-md border ${!showPreviewBefore ? 'border-emerald-500 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                        onClick={handleRemoveBackground}
+                        disabled={isPreviewActive}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        After
+                        <Eraser className="w-3.5 h-3.5" /> Remove BG
                       </button>
-                      <div className="ml-auto flex items-center gap-2">
-                        <button
-                          onClick={handleDiscardPreview}
-                          className="px-2.5 py-1.5 text-[11px] rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
-                        >
-                          Discard
-                        </button>
-                        <button
-                          onClick={handleApplyPreview}
-                          className="px-2.5 py-1.5 text-[11px] rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                        >
-                          Apply changes
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleUndo}
+                        disabled={history.length === 0 || isPreviewActive}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Undo className="w-3.5 h-3.5" /> Undo
+                      </button>
+                      <button
+                        onClick={() => setShowStartOverModal(true)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors border border-red-100"
+                      >
+                        <X className="w-3.5 h-3.5" /> Start Over
+                      </button>
+                      <button
+                        onClick={handleCleanup}
+                        disabled={isPreviewActive}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed col-span-2"
+                        title="AI Clean Code"
+                      >
+                        <Wand2 className="w-3.5 h-3.5" /> Optimize SVG
+                      </button>
+                      <button
+                        onClick={() => setShowThemes(!showThemes)}
+                        disabled={isPreviewActive}
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors col-span-2 ${showThemes ? 'bg-pink-100 text-pink-700' : 'bg-pink-50 hover:bg-pink-100 text-pink-700'}`}
+                        title="Apply Theme"
+                      >
+                        <Palette className="w-3.5 h-3.5" /> Themes
+                      </button>
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Manual Controls - Context Aware */}
-              {!isPreviewActive && primarySelectedId && selectedIds.length === 1 && (
-                <div className="pt-2">
-                  <ManualControls
-                    selectedId={primarySelectedId}
-                    onColorChange={handleManualColor}
-                    onScaleChange={handleManualScale}
-                    onDelete={handleManualDelete}
-                    onDuplicate={handleManualDuplicate}
-                  />
+                  {/* Active Selection / Chat */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-green-500" />
+                        {primarySelectedId ? "Edit Selection" : "Global Edit"}
+                      </h2>
+                      {primarySelectedId && (
+                        <span className="text-[10px] font-mono px-2 py-1 bg-green-100 text-green-700 rounded-md">
+                          #{primarySelectedId}
+                        </span>
+                      )}
+                    </div>
+
+                    <PromptInput
+                      onSubmit={handleEdit}
+                      isLoading={isLoading}
+                      placeholder={primarySelectedId ? `Instruct AI to edit #${primarySelectedId}...` : "Describe global changes..."}
+                      allowImage={Boolean(primarySelectedId)}
+                    />
+
+                    {isPreviewActive && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3 animate-in fade-in duration-300">
+                        <div className="text-xs font-semibold text-emerald-800">
+                          AI preview ready ({primarySelectedId ? `layer-scoped: #${primarySelectedId}` : 'global edit'})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowPreviewBefore(true)}
+                            className={`px-2.5 py-1.5 text-[11px] rounded-md border ${showPreviewBefore ? 'border-emerald-500 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                          >
+                            Before
+                          </button>
+                          <button
+                            onClick={() => setShowPreviewBefore(false)}
+                            className={`px-2.5 py-1.5 text-[11px] rounded-md border ${!showPreviewBefore ? 'border-emerald-500 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                          >
+                            After
+                          </button>
+                          <div className="ml-auto flex items-center gap-2">
+                            <button
+                              onClick={handleDiscardPreview}
+                              className="px-2.5 py-1.5 text-[11px] rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                            >
+                              Discard
+                            </button>
+                            <button
+                              onClick={handleApplyPreview}
+                              className="px-2.5 py-1.5 text-[11px] rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                            >
+                              Apply changes
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manual Controls - Context Aware */}
+                  {!isPreviewActive && primarySelectedId && selectedIds.length === 1 && (
+                    <div className="pt-2">
+                      <ManualControls
+                        selectedId={primarySelectedId}
+                        onColorChange={handleManualColor}
+                        onScaleChange={handleManualScale}
+                        onRotationChange={handleManualRotation}
+                        onOpacityChange={handleManualOpacity}
+                        onStrokeColorChange={handleManualStrokeColor}
+                        onStrokeWidthChange={handleManualStrokeWidth}
+                        onDelete={handleManualDelete}
+                        onDuplicate={handleManualDuplicate}
+                      />
+                    </div>
+                  )}
+
+                  {/* Theme Selector */}
+                  {showThemes && !isPreviewActive && (
+                    <div className="pt-2 animate-in slide-in-from-left-4 duration-300">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Themes</h3>
+                        <button onClick={() => setShowThemes(false)} className="text-slate-400 hover:text-slate-600"><X className="w-3 h-3" /></button>
+                      </div>
+                      <ThemeSelector onApplyTheme={handleApplyTheme} />
+                    </div>
+                  )}
+
+                  {/* Layer Tree */}
+                  <div className="pt-4 border-t border-slate-200">
+                    <LayerTree
+                      svgCode={displaySvg}
+                      selectedIds={selectedIds}
+                      onSelectionChange={handleSelectionChange}
+                      onMoveUp={handleMoveLayerUp}
+                      onMoveDown={handleMoveLayerDown}
+                      onMoveBefore={handleMoveLayerBefore}
+                      onMoveAfter={handleMoveLayerAfter}
+                      onClearSelection={handleClearSelection}
+                      onGroupDelete={handleGroupDelete}
+                      onGroupDuplicate={handleGroupDuplicate}
+                      onGroupMoveUp={handleGroupMoveUp}
+                      onGroupMoveDown={handleGroupMoveDown}
+                      lockedIds={lockedIds}
+                      hiddenIds={hiddenIds}
+                      onToggleLock={handleToggleLock}
+                      onToggleHide={handleToggleHide}
+                      onAutoGroup={handleSemanticLabel}
+                    />
+                  </div>
+
+                  {modelUsed && (
+                    <div className="pt-8 text-center">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-400 text-[10px] font-medium uppercase tracking-wider rounded-full">
+                        Generated by {modelUsed}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
-
-              {/* Layer Tree */}
-              <div className="pt-4 border-t border-slate-200">
-                <LayerTree
-                  svgCode={displaySvg}
-                  selectedIds={selectedIds}
-                  onSelectionChange={handleSelectionChange}
-                  onMoveUp={handleMoveLayerUp}
-                  onMoveDown={handleMoveLayerDown}
-                  onMoveBefore={handleMoveLayerBefore}
-                  onMoveAfter={handleMoveLayerAfter}
-                  onClearSelection={handleClearSelection}
-                  onGroupDelete={handleGroupDelete}
-                  onGroupDuplicate={handleGroupDuplicate}
-                  onGroupMoveUp={handleGroupMoveUp}
-                  onGroupMoveDown={handleGroupMoveDown}
-                  lockedIds={lockedIds}
-                  hiddenIds={hiddenIds}
-                  onToggleLock={handleToggleLock}
-                  onToggleHide={handleToggleHide}
-                />
-              </div>
-
-
-              {modelUsed && (
-                <div className="pt-8 text-center">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-400 text-[10px] font-medium uppercase tracking-wider rounded-full">
-                    Generated by {modelUsed}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {error && (
-            <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100 animate-in shake">
-              {error}
             </div>
           )}
         </div>
       </aside>
 
+      <ConfirmationModal
+        isOpen={showStartOverModal}
+        onClose={() => setShowStartOverModal(false)}
+        onConfirm={handleStartOverConfirm}
+        title="Start Over?"
+        message="Are you sure you want to discard your current work and start over? This action cannot be undone."
+        confirmText="Yes, Start Over"
+        cancelText="Cancel"
+        isDestructive
+      />
+
       {/* Main Preview Area */}
-      <main className="flex-1 relative bg-slate-100/50 flex flex-col items-center justify-center p-8 overflow-hidden">
+      < main className="flex-1 relative bg-slate-100/50 flex flex-col items-center justify-center p-8 overflow-hidden" >
         {svgCode && (
           <div className="absolute top-8 left-4 z-30">
             <button
@@ -645,15 +916,15 @@ function App() {
               {showCode ? "Show Preview" : "View Code"}
             </button>
           </div>
-        )}
+        )
+        }
+
         {/* Background Decoration */}
         <div className="absolute inset-0 z-0 opacity-40 pointer-events-none">
           <div className="absolute top-0 left-0 w-96 h-96 bg-green-200 rounded-full mix-blend-multiply filter blur-3xl animate-blob" />
           <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000" />
           <div className="absolute -bottom-32 left-20 w-96 h-96 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000" />
         </div>
-
-        {/* Top Right Controls removed */}
 
         {/* Content Area with Transition */}
         <div className="w-full h-full flex items-center justify-center relative p-8">
@@ -695,64 +966,81 @@ function App() {
           </div>
         </div>
 
-        {svgCode && !showCode && (
-          <div className="mt-8 text-slate-400 text-sm font-medium z-10 animate-in fade-in slide-in-from-bottom-4 delay-500">
-            <span className="flex items-center gap-2">
-              <Layers className="w-4 h-4" />
-              {isPreviewActive
-                ? `Previewing ${showPreviewBefore ? 'before' : 'after'} state`
-                : 'Click component to select layer'}
-            </span>
-          </div>
-        )}
+        {
+          svgCode && !showCode && (
+            <div className="mt-8 text-slate-400 text-sm font-medium z-10 animate-in fade-in slide-in-from-bottom-4 delay-500">
+              <span className="flex items-center gap-2">
+                <Layers className="w-4 h-4" />
+                {isPreviewActive
+                  ? `Previewing ${showPreviewBefore ? 'before' : 'after'} state`
+                  : 'Click component to select layer'}
+              </span>
+            </div>
+          )
+        }
 
         {/* Right Export Panel */}
-        {svgCode && !showCode && (
-          <div className="absolute top-6 right-6 z-30 w-28 bg-white/90 backdrop-blur-md border border-white/40 rounded-2xl shadow-xl p-2 space-y-1.5">
-            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Export</div>
-            <div className="space-y-1.5">
-              <button
-                onClick={() => handleExport('svg')}
-                disabled={isPreviewActive}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
-                  <Code2 className="w-3 h-3 text-green-600" /> SVG
-                </div>
-              </button>
-              <button
-                onClick={() => handleExport('png')}
-                disabled={isPreviewActive}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
-                  <FileImage className="w-3 h-3 text-green-600" /> PNG
-                </div>
-              </button>
-              <button
-                onClick={() => handleExport('jpg')}
-                disabled={isPreviewActive}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
-                  <FileJson className="w-3 h-3 text-green-600" /> JPG
-                </div>
-              </button>
-              <button
-                onClick={() => handleExport('pdf')}
-                disabled={isPreviewActive}
-                className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
-                  <FileType className="w-3 h-3 text-green-600" /> PDF
-                </div>
-              </button>
+        {
+          svgCode && !showCode && (
+            <div className="absolute top-6 right-6 z-30 w-28 bg-white/90 backdrop-blur-md border border-white/40 rounded-2xl shadow-xl p-2 space-y-1.5">
+              <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Export</div>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => handleExport('svg')}
+                  disabled={isPreviewActive}
+                  className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
+                    <Code2 className="w-3 h-3 text-green-600" /> SVG
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleExport('png')}
+                  disabled={isPreviewActive}
+                  className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
+                    <FileImage className="w-3 h-3 text-green-600" /> PNG
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleExport('jpg')}
+                  disabled={isPreviewActive}
+                  className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
+                    <FileJson className="w-3 h-3 text-green-600" /> JPG
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleExport('pdf')}
+                  disabled={isPreviewActive}
+                  className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
+                    <FileType className="w-3 h-3 text-green-600" /> PDF
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(svgCode);
+                    // Could add a toast here
+                  }}
+                  disabled={isPreviewActive}
+                  className="w-full px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-green-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-1 text-[12px] font-semibold text-slate-700">
+                    <Clipboard className="w-3 h-3 text-green-600" /> Copy
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )
+        }
+      </main >
+
       {isLoading && <LoadingOverlay />}
-    </div>
+    </div >
   );
 }
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
+  baseURL:'http://localhost:8000/api',
 });
 
 export const generateSvg = async (prompt, imageFile = null) => {
@@ -35,5 +35,15 @@ export const editSvg = async (
   const response = await api.post('/edit', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
+  return response.data;
+};
+
+export const cleanupSvg = async (svgCode) => {
+  const response = await api.post('/cleanup', { svg_code: svgCode });
+  return response.data;
+};
+
+export const semanticLabelSvg = async (svgCode) => {
+  const response = await api.post('/semantic-label', { svg_code: svgCode });
   return response.data;
 };

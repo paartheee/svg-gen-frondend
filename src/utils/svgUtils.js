@@ -473,3 +473,312 @@ export const parseLayerTree = (svgString) => {
 
     return buildTree(svg);
 };
+
+export const updateElementRotation = (svgString, elementId, angle) => {
+    const doc = parseSvg(svgString);
+    const element = doc.getElementById(elementId);
+
+    if (element) {
+        // Better approach: use style transform-box: fill-box; transform-origin: center;
+        element.style.transformBox = "fill-box";
+        element.style.transformOrigin = "center";
+
+        let currentTransform = element.getAttribute("transform") || "";
+
+        if (currentTransform.includes("rotate(")) {
+            currentTransform = currentTransform.replace(/rotate\([^)]+\)/, `rotate(${angle})`);
+        } else {
+            currentTransform += ` rotate(${angle})`;
+        }
+        element.setAttribute("transform", currentTransform.trim());
+    }
+    return serializeSvg(doc);
+};
+
+export const updateElementOpacity = (svgString, elementId, opacity) => {
+    const doc = parseSvg(svgString);
+    const element = doc.getElementById(elementId);
+    if (element) {
+        element.setAttribute("opacity", opacity);
+        element.style.opacity = opacity;
+    }
+    return serializeSvg(doc);
+};
+
+export const updateElementStroke = (svgString, elementId, strokeColor, strokeWidth) => {
+    const doc = parseSvg(svgString);
+    const element = doc.getElementById(elementId);
+    if (element) {
+        if (strokeColor !== undefined) {
+            element.setAttribute("stroke", strokeColor);
+            element.style.stroke = strokeColor;
+        }
+        if (strokeWidth !== undefined) {
+            element.setAttribute("stroke-width", strokeWidth);
+            element.style.strokeWidth = strokeWidth;
+        }
+    }
+    return serializeSvg(doc);
+};
+
+export const applyTheme = (svgString, theme) => {
+    const doc = parseSvg(svgString);
+    const svg = doc.documentElement;
+
+
+    // 2. Collect all unique colors
+    // Filter out the background element so it's not affected by the theme
+    const elements = Array.from(svg.querySelectorAll('*')).filter(el => el.id !== 'background');
+    const colorMap = new Map();
+
+    const processColor = (colorStr) => {
+        if (!colorStr) return;
+        const rgb = parseColorToRgb(colorStr);
+        if (rgb) {
+            const key = colorStr.trim().toLowerCase();
+            if (!colorMap.has(key)) colorMap.set(key, rgb);
+        }
+    };
+
+    elements.forEach(el => {
+        processColor(el.getAttribute('fill'));
+        processColor(el.style.fill);
+        processColor(el.getAttribute('stroke'));
+        processColor(el.style.stroke);
+        if (el.tagName.toLowerCase() === 'stop') {
+            processColor(el.getAttribute('stop-color'));
+            processColor(el.style.stopColor);
+        }
+    });
+
+    // 3. Sort existing colors by luminance
+    const distinctColors = Array.from(colorMap.keys()).sort((a, b) => {
+        return luminance(colorMap.get(a)) - luminance(colorMap.get(b));
+    });
+
+    // 4. Sort theme colors by luminance
+    const themeColorsRgb = theme.colors.map(c => ({ original: c, rgb: parseColorToRgb(c) }))
+        .filter(c => c.rgb)
+        .sort((a, b) => luminance(a.rgb) - luminance(b.rgb));
+
+    if (themeColorsRgb.length === 0) return serializeSvg(doc);
+
+    // 5. Create Mapping
+    const mapping = new Map();
+    distinctColors.forEach((originalColor, index) => {
+        // Quantile mapping
+        const pct = index / (Math.max(1, distinctColors.length - 1));
+        const themeIndex = Math.floor(pct * (themeColorsRgb.length - 1));
+        const clampedIndex = Math.min(Math.max(0, themeIndex), themeColorsRgb.length - 1);
+
+        mapping.set(originalColor, themeColorsRgb[clampedIndex].original);
+    });
+
+    // 6. Apply Mapping
+    const applyToAttribute = (el, attr) => {
+        const val = el.getAttribute(attr);
+        if (val) {
+            const key = val.trim().toLowerCase();
+            if (mapping.has(key)) el.setAttribute(attr, mapping.get(key));
+        }
+        const styleVal = el.style[attr];
+        if (styleVal) {
+            const key = styleVal.trim().toLowerCase();
+            if (mapping.has(key)) el.style[attr] = mapping.get(key);
+        }
+    };
+
+    elements.forEach(el => {
+        applyToAttribute(el, 'fill');
+        applyToAttribute(el, 'stroke');
+        if (el.tagName.toLowerCase() === 'stop') {
+            applyToAttribute(el, 'stop-color');
+            if (el.style.stopColor) {
+                const key = el.style.stopColor.trim().toLowerCase();
+                if (mapping.has(key)) el.style.stopColor = mapping.get(key);
+            }
+        }
+    });
+
+    return serializeSvg(doc);
+};
+
+export const getSvgViewBox = (svgString) => {
+    const doc = parseSvg(svgString);
+    const svg = doc.documentElement;
+    const viewBox = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+    return {
+        x: viewBox[0] || 0,
+        y: viewBox[1] || 0,
+        width: viewBox[2] || 512,
+        height: viewBox[3] || 512
+    };
+};
+
+export const injectSvgString = (svgString, snippet, x, y) => {
+    const doc = parseSvg(svgString);
+    const svg = doc.documentElement;
+
+    // Parse the snippet
+    const snippetDoc = parseSvg(snippet);
+    const snippetRoot = snippetDoc.documentElement;
+
+    if (!snippetRoot) return { svg: svgString, newId: null };
+
+    // Create a group
+    const newId = `asset_${Date.now()}`;
+    const g = doc.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("id", newId);
+
+    // Position
+    // If x and y are not provided, center it
+    if (x === undefined || y === undefined) {
+        const vb = getSvgViewBox(svgString);
+        const targetX = x !== undefined ? x : vb.width / 2;
+        const targetY = y !== undefined ? y : vb.height / 2;
+        // We might need to center the snippet itself, but we don't know its bbox without rendering.
+        // Just place at target for now.
+        g.setAttribute("transform", `translate(${targetX}, ${targetY})`);
+    } else {
+        g.setAttribute("transform", `translate(${x}, ${y})`);
+    }
+
+    // Move children
+    if (snippetRoot.tagName.toLowerCase() === 'svg') {
+        // Copy attributes if needed? usually we just want content
+        while (snippetRoot.firstChild) {
+            g.appendChild(snippetRoot.firstChild);
+        }
+    } else {
+        g.appendChild(snippetRoot);
+    }
+
+    svg.appendChild(g);
+
+    return {
+        svg: serializeSvg(doc),
+        newId: newId
+    };
+};
+
+export const extractSvgSnippet = (svgString, elementIds) => {
+    const doc = parseSvg(svgString);
+
+    // Create a new SVG document for the snippet
+    const newDoc = document.implementation.createDocument("http://www.w3.org/2000/svg", "svg", null);
+    const newSvg = newDoc.documentElement;
+    newSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    newSvg.setAttribute("viewBox", "0 0 100 100"); // Dummy viewbox, preview will handle scaling
+
+    // Clone elements
+    elementIds.forEach(id => {
+        const el = doc.getElementById(id);
+        if (el) {
+            newSvg.appendChild(el.cloneNode(true));
+        }
+    });
+
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(newDoc);
+};
+
+export const addAnimation = (svgString, elementId, config) => {
+    const doc = parseSvg(svgString);
+    const element = doc.getElementById(elementId);
+
+    if (!element) return svgString;
+
+    // Remove existing animations on this element first to avoid conflicts
+    const existingAnims = element.querySelectorAll('animate, animateTransform');
+    existingAnims.forEach(anim => anim.remove());
+
+    const { type, duration, repeat } = config;
+    let animEl;
+
+    if (type === 'spin') {
+        animEl = doc.createElementNS("http://www.w3.org/2000/svg", "animateTransform");
+        animEl.setAttribute("attributeName", "transform");
+        animEl.setAttribute("attributeType", "XML");
+        animEl.setAttribute("type", "rotate");
+        // We need to rotate around the center.
+        // Getting bbox is hard without rendering.
+        // We can try to use 0 0 0 to 360 0 0 if we assume it's centered or if we wrap it?
+        // Better strategy for robustness: 
+        // 1. If it's a basic shape, we can estimate center? No.
+        // 2. We can assume the user has centered the object or we rotate around 'center' which defaults to 0,0.
+        // A tricky part of SVG rotation.
+        // Workaround: Rotate from 0 to 360. If the object is not at 0,0, it will orbit.
+        // FIX: We rely on the user having positioned "groups" or using `transform-origin` style if supported.
+        // BUT `animateTransform` overrides.
+        // Let's try to find center if possible or just use a generic rotation.
+
+        // Actually, best bet for "Spin" without knowing center is to assume center is calculated or use CSS?
+        // Let's stick to simple 0 to 360 for now, but maybe inject `transform-origin: center` style?
+        // `transform-box: fill-box; transform-origin: center;` works well in modern SVG!
+        element.style.transformBox = 'fill-box';
+        element.style.transformOrigin = 'center';
+
+        animEl.setAttribute("from", "0");
+        animEl.setAttribute("to", "360");
+        animEl.setAttribute("dur", `${duration}s`);
+        animEl.setAttribute("repeatCount", repeat);
+    }
+    else if (type === 'pulse') {
+        // Pulse scale
+        element.style.transformBox = 'fill-box';
+        element.style.transformOrigin = 'center';
+
+        animEl = doc.createElementNS("http://www.w3.org/2000/svg", "animateTransform");
+        animEl.setAttribute("attributeName", "transform");
+        animEl.setAttribute("type", "scale");
+        animEl.setAttribute("values", "1; 1.1; 1");
+        animEl.setAttribute("dur", `${duration}s`);
+        animEl.setAttribute("repeatCount", repeat);
+        animEl.setAttribute("calcMode", "spline");
+        animEl.setAttribute("keySplines", "0.4 0 0.2 1; 0.4 0 0.2 1"); // Ease in out
+    }
+    else if (type === 'blink') {
+        animEl = doc.createElementNS("http://www.w3.org/2000/svg", "animate");
+        animEl.setAttribute("attributeName", "opacity");
+        animEl.setAttribute("values", "1; 0.3; 1");
+        animEl.setAttribute("dur", `${duration}s`);
+        animEl.setAttribute("repeatCount", repeat);
+    }
+    else if (type === 'float') {
+        animEl = doc.createElementNS("http://www.w3.org/2000/svg", "animateTransform");
+        animEl.setAttribute("attributeName", "transform");
+        animEl.setAttribute("type", "translate");
+        animEl.setAttribute("values", "0,0; 0,-10; 0,0"); // Simple float up down
+        animEl.setAttribute("dur", `${duration}s`);
+        animEl.setAttribute("repeatCount", repeat);
+        animEl.setAttribute("calcMode", "spline");
+        animEl.setAttribute("keySplines", "0.4 0 0.2 1; 0.4 0 0.2 1");
+        // Note: Translate might overwrite position if not carefully composed.
+        // Ideally we wrap in a group <g> and animate the group.
+        // But for now replacing the transform is the behavior of animateTransform unless additive="sum".
+        animEl.setAttribute("additive", "sum");
+    }
+
+    if (animEl) {
+        element.appendChild(animEl);
+    }
+
+    return serializeSvg(doc);
+};
+
+export const removeAnimation = (svgString, elementId) => {
+    const doc = parseSvg(svgString);
+    const element = doc.getElementById(elementId);
+    if (!element) return svgString;
+
+    const existingAnims = element.querySelectorAll('animate, animateTransform');
+    existingAnims.forEach(anim => anim.remove());
+
+    // Also clean up style props we added
+    if (element.style.transformBox === 'fill-box') {
+        element.style.removeProperty('transform-box');
+        element.style.removeProperty('transform-origin');
+    }
+
+    return serializeSvg(doc);
+};
